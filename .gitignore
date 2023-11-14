@@ -2,3 +2,4 @@ output/*
 text_data/*
 build/*
 *.pdf
+.vscode

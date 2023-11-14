@@ -1,4 +1,5 @@
 #include "matplotlibcpp.h"
+#include <omp.h>
 #include <filesystem>
 #include <iostream>
 #include <fstream>
@@ -275,10 +276,8 @@ void trigramCharAnalyseChunk(std::string* chunk_ptr, std::map<std::string, uint3
     }
 }
 
-void LoadAndAnalysisSeq(std::string text_data_path)
+void LoadAndAnalysisSeq(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false)
 {
-
-
     // Save path in a vector
     std::vector<fs::path> doc_paths;
 
@@ -286,7 +285,11 @@ void LoadAndAnalysisSeq(std::string text_data_path)
     {
         for (const auto& entry : std::filesystem::directory_iterator(text_data_path)) 
         {
-            if (std::filesystem::is_regular_file(entry))
+            if(doc_paths.size() >= max_doc_num)
+            {
+                break;
+            }
+            else if(std::filesystem::is_regular_file(entry))
             {
                 doc_paths.push_back(entry.path());
             }
@@ -310,7 +313,8 @@ void LoadAndAnalysisSeq(std::string text_data_path)
     while(!docs_ended)
     {
         std::string chunk_str;
-        chunk_str.reserve(CHUNK_SIZE);
+        chunk_str.resize(CHUNK_SIZE);
+        chunk_str.clear();
         bool chunk_full = false;
 
         while(!chunk_full)
@@ -379,21 +383,288 @@ void LoadAndAnalysisSeq(std::string text_data_path)
     }
 
     // Serialize to Json
-    analysisToJsonFile("./../../output/bigramWord.json", &bigram_word_occurences);
-    analysisToJsonFile("./../../output/trigramWord.json", &trigram_word_occurences);
-    analysisToJsonFile("./../../output/bigramChar.json", &bigram_char_occurences);
-    analysisToJsonFile("./../../output/trigramChar.json", &trigram_char_occurences);
-    
-
-
+    if(serialize_to_json)
+    {
+        analysisToJsonFile("./../../output/bigramWordSeq.json", &bigram_word_occurences);
+        analysisToJsonFile("./../../output/trigramWordSeq.json", &trigram_word_occurences);
+        analysisToJsonFile("./../../output/bigramCharSeq.json", &bigram_char_occurences);
+        analysisToJsonFile("./../../output/trigramCharSeq.json", &trigram_char_occurences);
+    }
 }
 
-void LoadAndAnalysisPar(std::string text_data_path)
+void LoadAndAnalysisPar(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false)
 {
+    ssize_t total_docs_size = 0;
+    // Save path in a vector
+    std::vector<fs::path> doc_paths;
+
+    if (std::filesystem::exists(text_data_path) && std::filesystem::is_directory(text_data_path))
+    {
+        for (const auto& entry : std::filesystem::directory_iterator(text_data_path)) 
+        {   
+            if(doc_paths.size() >= max_doc_num)
+            {
+                break;
+            }
+            else if (std::filesystem::is_regular_file(entry))
+            {
+                doc_paths.push_back(entry.path());
+                total_docs_size += entry.file_size();
+            }
+        }
+    } 
+    else 
+    {
+        std::cerr << "The specified directory does not exist or is not a directory." << std::endl;
+    }
     
+
+    uint32_t max_chunk_num = std::ceil(total_docs_size / CHUNK_SIZE); 
+
+    struct chunk_data
+    {
+        std::vector<std::map<std::string, std::map<std::string, uint32_t>>> bigram_word_occurences;
+        std::vector<std::map<std::string, std::map<std::string, std::map<std::string, uint32_t>>>> trigram_word_occurences;
+        std::vector<std::map<std::string, uint32_t>> bigram_char_occurences;
+        std::vector<std::map<std::string, uint32_t>> trigram_char_occurences;
+
+        std::vector<bool> to_skip;
+        std::vector<bool> chunk_full;
+        std::vector<std::string> chunk_str;
+        std::vector<int> thread_idx;                // for Debug
+    };
+
+    // Allocate chunk structures
+    chunk_data chunks;
+    chunks.bigram_word_occurences.resize(max_chunk_num);
+    chunks.trigram_word_occurences.resize(max_chunk_num);
+    chunks.bigram_char_occurences.resize(max_chunk_num);
+    chunks.trigram_char_occurences.resize(max_chunk_num);
+    chunks.to_skip.resize(max_chunk_num, false);
+    chunks.chunk_full.resize(max_chunk_num, false);
+    chunks.chunk_str.resize(max_chunk_num);
+    chunks.thread_idx.resize(max_chunk_num);
+
+    for(int chunk_idx=0; chunk_idx<max_chunk_num; chunk_idx++)
+    {
+        chunks.chunk_str[chunk_idx].resize(CHUNK_SIZE);
+        chunks.chunk_str[chunk_idx].clear();
+    }
+
+    #pragma omp parallel shared(chunks)
+    {
+        #pragma omp single
+        {
+            // Iter through file and save data in chunk 
+            std::streampos last_doc_pos = -1;
+            auto last_doc_path = doc_paths.begin();
+            bool docs_ended = false;
+
+            uint32_t chunk_idx = 0;
+            while(!docs_ended)
+            {
+
+                while(!chunks.chunk_full[chunk_idx])
+                {
+                    // for loop starting from last doc path (initialized with doc_path.begin())
+                    for(auto iter_doc_path=last_doc_path; iter_doc_path != doc_paths.end(); iter_doc_path++)
+                    {
+
+                        std::ifstream doc_input(*iter_doc_path, std::ios::in);
+                        if(!doc_input.is_open())
+                        {
+                            std::cout << *iter_doc_path << " not opened" << std::endl;
+                            // TODO handle opening error
+                        }
+
+                        if(last_doc_pos != -1)
+                        {
+                            doc_input.seekg(last_doc_pos);
+                        }
+
+                        std::string line;
+
+                        while(std::getline(doc_input, line))
+                        {
+
+                            if(chunks.chunk_str[chunk_idx].length() >= CHUNK_SIZE)
+                            {
+                                chunks.chunk_full[chunk_idx] = true;
+                                last_doc_pos = doc_input.tellg() - (std::streampos)line.length();
+                                last_doc_path = iter_doc_path;
+                                break;
+                            }
+                            else
+                            {
+                                if (line.back() == '\n')
+                                {
+                                    line.pop_back();
+                                }    
+                                else if (line.back() == '\r')
+                                {
+                                    line.pop_back();
+                                    line.push_back(' ');
+                                }
+                                chunks.chunk_str[chunk_idx] += line;
+                            }
+                        }
+
+                        // Last document, end loop even if chunk not full
+                        if(std::next(iter_doc_path) == doc_paths.end())
+                        {
+                            chunks.chunk_full[chunk_idx] = true;
+                            docs_ended = true;
+                        }
+                        else if(chunks.chunk_full[chunk_idx])
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                chunk_idx++;
+            }
+
+            for(int next_chunk_idx=chunk_idx; next_chunk_idx<max_chunk_num;next_chunk_idx++)
+            {
+                chunks.to_skip[next_chunk_idx] = true;
+            }
+
+            // std::cout << "Load process ended, chunks num : " << chunk_idx << "\n";
+        }
+
+        uint32_t chunks_count = 0;
+        uint32_t thread_chunk_idx = 0;
+        while(true)
+        {
+            thread_chunk_idx = chunks_count * (omp_get_max_threads() ) + omp_get_thread_num();
+
+            if(thread_chunk_idx >= max_chunk_num)
+            {
+                break;
+            }
+            else
+            {
+                while(!chunks.chunk_full[thread_chunk_idx] && !chunks.to_skip[thread_chunk_idx])
+                {
+                    // Wait until chunks is ready to be processed
+                }
+                if(chunks.to_skip[thread_chunk_idx])
+                {
+                    break;
+                }
+
+                chunks.thread_idx[thread_chunk_idx] = thread_chunk_idx;
+
+                // Analyse chunk
+                bigramWordAnalyseChunk(&chunks.chunk_str[thread_chunk_idx], &chunks.bigram_word_occurences[thread_chunk_idx]);
+                trigramWordAnalyseChunk(&chunks.chunk_str[thread_chunk_idx], &chunks.trigram_word_occurences[thread_chunk_idx]);
+                bigramCharAnalyseChunk(&chunks.chunk_str[thread_chunk_idx], &chunks.bigram_char_occurences[thread_chunk_idx]);
+                trigramCharAnalyseChunk(&chunks.chunk_str[thread_chunk_idx], &chunks.trigram_char_occurences[thread_chunk_idx]);
+                chunks_count ++;
+            }
+        }
+
+    }
+
+    // Merge partial maps
+
+    std::map<std::string, std::map<std::string, uint32_t>> total_bigram_word_occurences;
+    std::map<std::string, std::map<std::string, std::map<std::string, uint32_t>>> total_trigram_word_occurences;
+    std::map<std::string, uint32_t> total_bigram_char_occurences;
+    std::map<std::string, uint32_t> total_trigram_char_occurences;
+
+    for(int chunk_idx=0; chunk_idx < max_chunk_num; chunk_idx++)
+    {
+        if(chunks.to_skip[chunk_idx]){
+            continue;
+        }
+        else{
+            // bigram word merge
+            for(auto iter_first_word : chunks.bigram_word_occurences[chunk_idx])
+            {
+                for(auto iter_second_word : iter_first_word.second)
+                {
+                    total_bigram_word_occurences[iter_first_word.first][iter_second_word.first] += iter_second_word.second;
+                }
+            }
+            // trigram word merge
+            for(auto iter_first_word : chunks.trigram_word_occurences[chunk_idx])
+            {
+                for(auto iter_second_word : iter_first_word.second)
+                {
+                    for(auto iter_third_word : iter_second_word.second)
+                    {
+                        total_trigram_word_occurences[iter_first_word.first][iter_second_word.first][iter_third_word.first] += iter_third_word.second;
+                    }
+                }
+            }
+            // bigram char merge
+            for(auto iter_char : chunks.bigram_char_occurences[chunk_idx])
+            {
+                total_bigram_char_occurences[iter_char.first] += iter_char.second;
+            }
+            // trigram char merge
+            for(auto iter_char : chunks.trigram_char_occurences[chunk_idx])
+            {
+                total_trigram_char_occurences[iter_char.first] += iter_char.second;
+            }
+        }
+    }
+
+    // Serialize to Json
+    if(serialize_to_json)
+    {
+        analysisToJsonFile("./../../output/bigramWordPar.json", &total_bigram_word_occurences);
+        analysisToJsonFile("./../../output/trigramWordPar.json", &total_trigram_word_occurences);
+        analysisToJsonFile("./../../output/bigramCharPar.json", &total_bigram_char_occurences);
+        analysisToJsonFile("./../../output/trigramCharPar.json", &total_trigram_char_occurences);
+    }
+    
+    // Debug
+    // for(auto iter : chunks.thread_idx)
+    // {
+    //     std::cout << iter << "\n";
+    // }
+}
+
+void Benchmark()
+{
+    struct benchmarks_data
+    {
+        std::vector<int> ebook_num;
+        std::vector<int> chunk_size;
+        std::vector<double> elapsed_seq, elapsed_par;
+
+
+        void ToJsonFile(std::string json_path)
+        {
+            
+        }
+    };
+    
+    benchmarks_data benchmarks;
+
+    double start_time=0, end_time=0;
+
+    benchmarks.chunk_size.push_back(CHUNK_SIZE);
+    benchmarks.ebook_num.push_back(50);
+
+    start_time = omp_get_wtime();
+    LoadAndAnalysisSeq("./../../text_data", 50);
+    end_time = omp_get_wtime();
+    benchmarks.elapsed_seq.push_back(end_time-start_time);
+
+    start_time = omp_get_wtime();
+    LoadAndAnalysisPar("./../../text_data", 50);
+    end_time = omp_get_wtime();
+    benchmarks.elapsed_par.push_back(end_time-start_time);
+
+    benchmarks.ToJsonFile("./../../output/benchmarks.json");
+
 }
 
 int main() 
 {
-    LoadAndAnalysisSeq("./../../text_data");
+    Benchmark();
 }
