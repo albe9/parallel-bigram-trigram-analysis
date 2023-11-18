@@ -1,12 +1,11 @@
-#include "matplotlibcpp.h"
 #include <omp.h>
 #include <filesystem>
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <vector>
 #include <map>
 
-namespace plt = matplotlibcpp;
 namespace fs = std::filesystem;
 
 // Bigram word to json
@@ -747,7 +746,7 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
                                              << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
             std::cout << "\r";
             start_time = omp_get_wtime();
-            LoadAndAnalysisSeq("./../../text_data", ebooks_to_load[main_benchmarks_idx]);
+            LoadAndAnalysisSeq("./../text_data", ebooks_to_load[main_benchmarks_idx]);
             end_time = omp_get_wtime();
             elapsed_seq.push_back(end_time-start_time);
 
@@ -755,7 +754,7 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
                                              << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
             std::cout << "\r";
             start_time = omp_get_wtime();
-            LoadAndAnalysisPar("./../../text_data", ebooks_to_load[main_benchmarks_idx]);
+            LoadAndAnalysisPar("./../text_data", ebooks_to_load[main_benchmarks_idx]);
             end_time = omp_get_wtime();
             elapsed_par.push_back(end_time-start_time);
 
@@ -763,7 +762,7 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
                                              << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
             std::cout << "\r";
             start_time = omp_get_wtime();
-            LoadAndAnalysisParV2("./../../text_data", ebooks_to_load[main_benchmarks_idx]);
+            LoadAndAnalysisParV2("./../text_data", ebooks_to_load[main_benchmarks_idx]);
             end_time = omp_get_wtime();
             elapsed_parV2.push_back(end_time-start_time);
         }
@@ -780,25 +779,26 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
 int main() 
 {
 
-    std::vector<uint32_t> ebooks_to_load = {10, 50, 100, 500, 1000};
+    // std::vector<uint32_t> ebooks_to_load = {10, 50, 100, 500, 1000};
+    std::vector<uint32_t> ebooks_to_load = {2};
     Benchmark(ebooks_to_load);
-    
+
     // double start_time=0, end_time=0;
     // std::cout << "Seq" << "\n";
     // start_time = omp_get_wtime();
-    // LoadAndAnalysisSeq("./../../text_data", 100);
+    // LoadAndAnalysisSeq("./../text_data", 10);
     // end_time = omp_get_wtime();
     // std::cout << "time :" << end_time -start_time << "\n";
 
     // std::cout << "Par" << "\n";
     // start_time = omp_get_wtime();
-    // LoadAndAnalysisPar("./../../text_data", 100);
+    // LoadAndAnalysisPar("./../text_data", 100);
     // end_time = omp_get_wtime();
     // std::cout << "time :" << end_time -start_time << "\n";
 
     // std::cout << "ParV2" << "\n";
     // start_time = omp_get_wtime();
-    // LoadAndAnalysisParV2("./../../text_data", 100);
+    // LoadAndAnalysisParV2("./../text_data", 100);
     // end_time = omp_get_wtime();
     // std::cout << "time :" << end_time -start_time << "\n";
 }
