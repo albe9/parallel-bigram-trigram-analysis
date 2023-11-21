@@ -4,7 +4,7 @@ import json
 
 def main():
 
-    with open("./output/benchmarks_backup.json",'r') as json_file:
+    with open("./media/benchmarks_backup.json",'r') as json_file:
         benchmarks = json.load(json_file)
         # print(benchmarks)
 
@@ -26,6 +26,7 @@ def main():
     ax.set_title('Benchmarks')
 
     ax.legend()
+    fig.savefig("./media/benchmarks.png", dpi=600)
     plt.show()
 
 if __name__ == "__main__":
