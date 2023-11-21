@@ -4,3 +4,4 @@ debug_text_data/*
 build/*
 *.pdf
 .vscode
+vtune_analysis/*
