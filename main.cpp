@@ -6,6 +6,7 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -275,7 +276,8 @@ void trigramCharAnalyseChunk(std::string* chunk_ptr, std::unordered_map<std::str
     }
 }
 
-void LoadAndAnalysisSeq(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false)
+void LoadAndAnalysisSeq(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false,
+                            bool bigram_char=false, bool trigram_char=false, bool bigram_word=false, bool trigram_word=false)
 {
     // Save path in a vector
     std::vector<fs::path> doc_paths;
@@ -339,23 +341,32 @@ void LoadAndAnalysisSeq(std::string text_data_path, int max_doc_num=-1, bool ser
         }
 
         // Analyse chunk
+        if(bigram_word)
         bigramWordAnalyseChunk(&doc_str, &bigram_word_occurrences);
+        if(trigram_word)
         trigramWordAnalyseChunk(&doc_str, &trigram_word_occurrences);
+        if(bigram_char)
         bigramCharAnalyseChunk(&doc_str, &bigram_char_occurrences);
+        if(trigram_char)
         trigramCharAnalyseChunk(&doc_str, &trigram_char_occurrences);
     }
 
     // Serialize to Json
     if(serialize_to_json)
     {
+        if(bigram_word)
         analysisToJsonFile("./../output/bigramWordSeq.json", &bigram_word_occurrences);
+        if(trigram_word)
         analysisToJsonFile("./../output/trigramWordSeq.json", &trigram_word_occurrences);
+        if(bigram_char)
         analysisToJsonFile("./../output/bigramCharSeq.json", &bigram_char_occurrences);
+        if(trigram_char)
         analysisToJsonFile("./../output/trigramCharSeq.json", &trigram_char_occurrences);
     }
 }
 
-void LoadAndAnalysisPar(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false)
+void LoadAndAnalysisPar(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false,
+                            bool bigram_char=false, bool trigram_char=false, bool bigram_word=false, bool trigram_word=false)
 {
     ssize_t total_docs_size = 0;
     // Save path in a vector
@@ -387,6 +398,12 @@ void LoadAndAnalysisPar(std::string text_data_path, int max_doc_num=-1, bool ser
     std::vector<std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>>>> thread_trigram_word_occurrences(max_threads);
     std::vector<std::unordered_map<std::string, uint32_t>> thread_bigram_char_occurrences(max_threads);
     std::vector<std::unordered_map<std::string, uint32_t>> thread_trigram_char_occurrences(max_threads);
+
+    std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>> total_bigram_word_occurrences;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>>> total_trigram_word_occurrences;
+    std::unordered_map<std::string, uint32_t> total_bigram_char_occurrences;
+    std::unordered_map<std::string, uint32_t> total_trigram_char_occurrences;
+
 
     std::vector<std::string> thread_docs_str(doc_paths.size());
     std::vector<bool> doc_ready(doc_paths.size(), false);
@@ -452,68 +469,93 @@ void LoadAndAnalysisPar(std::string text_data_path, int max_doc_num=-1, bool ser
 
                 
                 // Analyse chunk
+                if(bigram_word)
                 bigramWordAnalyseChunk(&thread_docs_str[thread_doc_idx], &thread_bigram_word_occurrences[thread_idx]);
+                if(trigram_word)
                 trigramWordAnalyseChunk(&thread_docs_str[thread_doc_idx], &thread_trigram_word_occurrences[thread_idx]);
+                if(bigram_char)
                 bigramCharAnalyseChunk(&thread_docs_str[thread_doc_idx], &thread_bigram_char_occurrences[thread_idx]);
+                if(trigram_char)
                 trigramCharAnalyseChunk(&thread_docs_str[thread_doc_idx], &thread_trigram_char_occurrences[thread_idx]);
+                thread_docs_str[thread_doc_idx].clear();
                 doc_count ++;
             }
         }
 
-    }
+    #pragma omp barrier
+        // Merge partial unordered_maps
+        // Assume at least 4 thread TODO: check
 
-    // Merge partial maps
-    
-    std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>> total_bigram_word_occurrences;
-    std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>>> total_trigram_word_occurrences;
-    std::unordered_map<std::string, uint32_t> total_bigram_char_occurrences;
-    std::unordered_map<std::string, uint32_t> total_trigram_char_occurrences;
-
-    for(int thread_idx=0; thread_idx < max_threads; thread_idx++)
-    {
-        // bigram word merge
-        for(auto iter_first_word : thread_bigram_word_occurrences[thread_idx])
+        for(int partial_map_idx=0; partial_map_idx < max_threads; partial_map_idx++)
         {
-            for(auto iter_second_word : iter_first_word.second)
+            if(thread_idx == 0 && bigram_word)
             {
-                total_bigram_word_occurrences[iter_first_word.first][iter_second_word.first] += iter_second_word.second;
-            }
-        }
-        // trigram word merge
-        for(auto iter_first_word : thread_trigram_word_occurrences[thread_idx])
-        {
-            for(auto iter_second_word : iter_first_word.second)
-            {
-                for(auto iter_third_word : iter_second_word.second)
+                // bigram word merge
+                for(auto& iter_first_word : thread_bigram_word_occurrences[partial_map_idx])
                 {
-                    total_trigram_word_occurrences[iter_first_word.first][iter_second_word.first][iter_third_word.first] += iter_third_word.second;
+                    for(auto& iter_second_word : iter_first_word.second)
+                    {
+                        total_bigram_word_occurrences[iter_first_word.first][iter_second_word.first] += iter_second_word.second;
+                    }
                 }
             }
+            else if(thread_idx == 1 && trigram_word)
+            {
+                // trigram word merge
+                for(auto& iter_first_word : thread_trigram_word_occurrences[partial_map_idx])
+                {
+                    for(auto& iter_second_word : iter_first_word.second)
+                    {
+                        for(auto& iter_third_word : iter_second_word.second)
+                        {
+                            total_trigram_word_occurrences[iter_first_word.first][iter_second_word.first][iter_third_word.first] += iter_third_word.second;
+                        }
+                    }
+                }
+            }
+            else if(thread_idx == 2 && bigram_char)
+            {
+                // bigram char merge
+                for(auto& iter_char : thread_bigram_char_occurrences[partial_map_idx])
+                {
+                    total_bigram_char_occurrences[iter_char.first] += iter_char.second;
+                }
+            }
+            else if(thread_idx == 3 && trigram_char)
+            {
+                // trigram char merge
+                for(auto& iter_char : thread_trigram_char_occurrences[partial_map_idx])
+                {
+                    total_trigram_char_occurrences[iter_char.first] += iter_char.second;
+                }
+            }
+            else
+            {
+                break;
+            }
         }
-        // bigram char merge
-        for(auto iter_char : thread_bigram_char_occurrences[thread_idx])
-        {
-            total_bigram_char_occurrences[iter_char.first] += iter_char.second;
-        }
-        // trigram char merge
-        for(auto iter_char : thread_trigram_char_occurrences[thread_idx])
-        {
-            total_trigram_char_occurrences[iter_char.first] += iter_char.second;
-        }
+    
     }
+
+    
 
     // Serialize to Json
     if(serialize_to_json)
     {
+        if(bigram_word)
         analysisToJsonFile("./../output/bigramWordPar.json", &total_bigram_word_occurrences);
+        if(trigram_word)
         analysisToJsonFile("./../output/trigramWordPar.json", &total_trigram_word_occurrences);
+        if(bigram_char)
         analysisToJsonFile("./../output/bigramCharPar.json", &total_bigram_char_occurrences);
+        if(trigram_char)
         analysisToJsonFile("./../output/trigramCharPar.json", &total_trigram_char_occurrences);
     }
     
 }
 
-void LoadAndAnalysisParV2(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false)
+void LoadAndAnalysisParV2(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false,
+                            bool bigram_char=false, bool trigram_char=false, bool bigram_word=false, bool trigram_word=false)
 {
     // Save paths in a vector
     std::vector<fs::path> doc_paths;
@@ -537,29 +579,22 @@ void LoadAndAnalysisParV2(std::string text_data_path, int max_doc_num=-1, bool s
         std::cerr << "The specified directory does not exist or is not a directory." << std::endl;
     }
     
+    // Sort the vector based on file sizes (to distribute them equally)
+    std::sort(doc_paths.begin(), doc_paths.end(), [](const fs::path& path1, const fs::path& path2) {
+        return fs::file_size(path1) < fs::file_size(path2);
+    });
+
+    
     uint32_t max_threads = omp_get_max_threads();
 
     // Split doc_path based on max threads
-
-    uint32_t num_doc_for_thread = doc_paths.size() / max_threads;
-    uint32_t doc_remainder = doc_paths.size() % max_threads;
-    std::vector<std::vector<fs::path>> threads_doc_paths;
-    uint32_t start_doc_idx = 0;
-    for(int thread_idx=0; thread_idx<max_threads; thread_idx++)
+    std::vector<std::vector<fs::path>> threads_doc_paths(max_threads);
+    uint32_t thread_idx = 0;
+    for(auto doc_path : doc_paths)
     {
-        uint32_t end_doc_idx = start_doc_idx + num_doc_for_thread - 1;
-        if(doc_remainder > 0)
-        {
-            end_doc_idx++;
-            doc_remainder--;
-        }
-
-        std::vector<fs::path> doc_subset(doc_paths.begin() + start_doc_idx, doc_paths.begin() + end_doc_idx + 1);
-        threads_doc_paths.push_back(doc_subset);
-
-        start_doc_idx = end_doc_idx + 1;
+        threads_doc_paths[thread_idx % max_threads].push_back(doc_path);
+        thread_idx++;
     }
-
 
     std::vector<std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>>> thread_bigram_word_occurrences(max_threads);
     std::vector<std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>>>> thread_trigram_word_occurrences(max_threads);
@@ -609,9 +644,13 @@ void LoadAndAnalysisParV2(std::string text_data_path, int max_doc_num=-1, bool s
                 }
 
                 // Analyse chunk
+                if(bigram_word)
                 bigramWordAnalyseChunk(&doc_str, &thread_bigram_word_occurrences[thread_idx]);
+                if(trigram_word)
                 trigramWordAnalyseChunk(&doc_str, &thread_trigram_word_occurrences[thread_idx]);
+                if(bigram_char)
                 bigramCharAnalyseChunk(&doc_str, &thread_bigram_char_occurrences[thread_idx]);
+                if(trigram_char)
                 trigramCharAnalyseChunk(&doc_str, &thread_trigram_char_occurrences[thread_idx]);
             
             }
@@ -623,43 +662,43 @@ void LoadAndAnalysisParV2(std::string text_data_path, int max_doc_num=-1, bool s
 
         for(int partial_map_idx=0; partial_map_idx < max_threads; partial_map_idx++)
         {
-            if(thread_idx == 0)
+            if(thread_idx == 0 && bigram_word)
             {
                 // bigram word merge
-                for(auto iter_first_word : thread_bigram_word_occurrences[partial_map_idx])
+                for(auto& iter_first_word : thread_bigram_word_occurrences[partial_map_idx])
                 {
-                    for(auto iter_second_word : iter_first_word.second)
+                    for(auto& iter_second_word : iter_first_word.second)
                     {
                         total_bigram_word_occurrences[iter_first_word.first][iter_second_word.first] += iter_second_word.second;
                     }
                 }
             }
-            else if(thread_idx == 1)
+            else if(thread_idx == 1 && trigram_word)
             {
                 // trigram word merge
-                for(auto iter_first_word : thread_trigram_word_occurrences[partial_map_idx])
+                for(auto& iter_first_word : thread_trigram_word_occurrences[partial_map_idx])
                 {
-                    for(auto iter_second_word : iter_first_word.second)
+                    for(auto& iter_second_word : iter_first_word.second)
                     {
-                        for(auto iter_third_word : iter_second_word.second)
+                        for(auto& iter_third_word : iter_second_word.second)
                         {
                             total_trigram_word_occurrences[iter_first_word.first][iter_second_word.first][iter_third_word.first] += iter_third_word.second;
                         }
                     }
                 }
             }
-            else if(thread_idx == 2)
+            else if(thread_idx == 2 && bigram_char)
             {
                 // bigram char merge
-                for(auto iter_char : thread_bigram_char_occurrences[partial_map_idx])
+                for(auto& iter_char : thread_bigram_char_occurrences[partial_map_idx])
                 {
                     total_bigram_char_occurrences[iter_char.first] += iter_char.second;
                 }
             }
-            else if(thread_idx == 3)
+            else if(thread_idx == 3 && trigram_char)
             {
                 // trigram char merge
-                for(auto iter_char : thread_trigram_char_occurrences[partial_map_idx])
+                for(auto& iter_char : thread_trigram_char_occurrences[partial_map_idx])
                 {
                     total_trigram_char_occurrences[iter_char.first] += iter_char.second;
                 }
@@ -675,9 +714,134 @@ void LoadAndAnalysisParV2(std::string text_data_path, int max_doc_num=-1, bool s
     // Serialize to Json
     if(serialize_to_json)
     {
+        if(bigram_word)
         analysisToJsonFile("./../output/bigramWordParV2.json", &total_bigram_word_occurrences);
+        if(trigram_word)
         analysisToJsonFile("./../output/trigramWordParV2.json", &total_trigram_word_occurrences);
+        if(bigram_char)
         analysisToJsonFile("./../output/bigramCharParV2.json", &total_bigram_char_occurrences);
+        if(trigram_char)
+        analysisToJsonFile("./../output/trigramCharParV2.json", &total_trigram_char_occurrences);
+    }
+
+}
+
+void LoadAndAnalysisParV3(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false,
+                            bool bigram_char=false, bool trigram_char=false, bool bigram_word=false, bool trigram_word=false)
+{
+    // Save paths in a vector
+    std::vector<fs::path> doc_paths;
+
+    if (std::filesystem::exists(text_data_path) && std::filesystem::is_directory(text_data_path))
+    {
+        for (const auto& entry : std::filesystem::directory_iterator(text_data_path)) 
+        {   
+            if(doc_paths.size() >= max_doc_num)
+            {
+                break;
+            }
+            else if (std::filesystem::is_regular_file(entry))
+            {
+                doc_paths.push_back(entry.path());
+            }
+        }
+    } 
+    else 
+    {
+        std::cerr << "The specified directory does not exist or is not a directory." << std::endl;
+    }
+    
+    uint32_t max_threads = omp_get_max_threads();
+
+    // Split doc_path based on max threads
+
+    uint32_t num_doc_for_thread = doc_paths.size() / max_threads;
+    uint32_t doc_remainder = doc_paths.size() % max_threads;
+    std::vector<std::vector<fs::path>> threads_doc_paths;
+    uint32_t start_doc_idx = 0;
+    for(int thread_idx=0; thread_idx<max_threads; thread_idx++)
+    {
+        uint32_t end_doc_idx = start_doc_idx + num_doc_for_thread - 1;
+        if(doc_remainder > 0)
+        {
+            end_doc_idx++;
+            doc_remainder--;
+        }
+
+        std::vector<fs::path> doc_subset(doc_paths.begin() + start_doc_idx, doc_paths.begin() + end_doc_idx + 1);
+        threads_doc_paths.push_back(doc_subset);
+
+        start_doc_idx = end_doc_idx + 1;
+    }
+
+    std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>> total_bigram_word_occurrences;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>>> total_trigram_word_occurrences;
+    std::unordered_map<std::string, uint32_t> total_bigram_char_occurrences;
+    std::unordered_map<std::string, uint32_t> total_trigram_char_occurrences;
+
+    #pragma omp parallel shared(threads_doc_paths, total_bigram_word_occurrences, total_trigram_word_occurrences, total_bigram_char_occurrences, total_trigram_char_occurrences)
+    {
+        uint32_t thread_idx = omp_get_thread_num();
+
+        if(threads_doc_paths[thread_idx].size() != 0 )
+        {
+            for(auto iter_doc_path=threads_doc_paths[thread_idx].begin(); iter_doc_path != threads_doc_paths[thread_idx].end(); iter_doc_path++)
+            {
+                std::string doc_str;
+                doc_str.resize(fs::file_size(*iter_doc_path));
+                doc_str.clear();
+
+                std::ifstream doc_input(*iter_doc_path, std::ios::in);
+                if(!doc_input.is_open())
+                {
+                    std::cout << *iter_doc_path << " not opened" << std::endl;
+                    // TODO handle opening error
+                }
+
+                std::string line;
+
+                while(std::getline(doc_input, line))
+                {
+
+                    if (line.back() == '\n')
+                    {
+                        line.pop_back();
+                    }    
+                    else if (line.back() == '\r')
+                    {
+                        line.pop_back();
+                        line.push_back(' ');
+                    }
+                    doc_str += line;
+                    
+                }
+
+                #pragma omp critical
+                {
+                    // Analyse chunk
+                    if(bigram_word)
+                    bigramWordAnalyseChunk(&doc_str, &total_bigram_word_occurrences);
+                    if(trigram_word)
+                    trigramWordAnalyseChunk(&doc_str, &total_trigram_word_occurrences);
+                    if(bigram_char)
+                    bigramCharAnalyseChunk(&doc_str, &total_bigram_char_occurrences);
+                    if(trigram_char)
+                    trigramCharAnalyseChunk(&doc_str, &total_trigram_char_occurrences);
+                }
+            }
+        }
+    }
+
+    // Serialize to Json
+    if(serialize_to_json)
+    {
+        if(bigram_word)
+        analysisToJsonFile("./../output/bigramWordParV2.json", &total_bigram_word_occurrences);
+        if(trigram_word)
+        analysisToJsonFile("./../output/trigramWordParV2.json", &total_trigram_word_occurrences);
+        if(bigram_char)
+        analysisToJsonFile("./../output/bigramCharParV2.json", &total_bigram_char_occurrences);
+        if(trigram_char)
         analysisToJsonFile("./../output/trigramCharParV2.json", &total_trigram_char_occurrences);
     }
 
@@ -685,6 +849,8 @@ void LoadAndAnalysisParV2(std::string text_data_path, int max_doc_num=-1, bool s
 
 void Benchmark(std::vector<uint32_t> ebooks_to_load)
 {
+    // Benchmark performs only character analysis due to available hardware resources (massive Ram usage to store words as documents increase)
+
     struct benchmarks_data
     {
         std::vector<int> ebook_num;
@@ -749,7 +915,7 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
     };
     
     benchmarks_data benchmarks;
-    uint32_t iter_for_reliability = 10;
+    uint32_t iter_for_reliability = 5;
     uint32_t main_benchmarks_number = ebooks_to_load.size();
 
     for(int main_benchmarks_idx=0; main_benchmarks_idx< main_benchmarks_number; main_benchmarks_idx++)
@@ -765,7 +931,7 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
                                              << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
             std::cout << "\r";
             start_time = omp_get_wtime();
-            LoadAndAnalysisSeq("./../text_data", ebooks_to_load[main_benchmarks_idx]);
+            LoadAndAnalysisSeq("./../text_data", ebooks_to_load[main_benchmarks_idx], false, true, true);
             end_time = omp_get_wtime();
             elapsed_seq.push_back(end_time-start_time);
 
@@ -773,7 +939,7 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
                                              << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
             std::cout << "\r";
             start_time = omp_get_wtime();
-            LoadAndAnalysisPar("./../text_data", ebooks_to_load[main_benchmarks_idx]);
+            LoadAndAnalysisPar("./../text_data", ebooks_to_load[main_benchmarks_idx], false, true, true);
             end_time = omp_get_wtime();
             elapsed_par.push_back(end_time-start_time);
 
@@ -781,7 +947,7 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
                                              << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
             std::cout << "\r";
             start_time = omp_get_wtime();
-            LoadAndAnalysisParV2("./../text_data", ebooks_to_load[main_benchmarks_idx]);
+            LoadAndAnalysisParV2("./../text_data", ebooks_to_load[main_benchmarks_idx], false, true, true);
             end_time = omp_get_wtime();
             elapsed_parV2.push_back(end_time-start_time);
         }
@@ -798,26 +964,34 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
 int main() 
 {
 
-    // std::vector<uint32_t> ebooks_to_load = {10, 50, 100, 500, 1000};
-    // std::vector<uint32_t> ebooks_to_load = {10, 50, 100, 500, 1000};
+    // std::vector<uint32_t> ebooks_to_load = {10};
+    // std::vector<uint32_t> ebooks_to_load = {10, 50, 100, 200, 500, 1000, 2000, 5000};
     // Benchmark(ebooks_to_load);
 
-    // double start_time=0, end_time=0;
+
+
+    double start_time=0, end_time=0;
     // std::cout << "Seq" << "\n";
     // start_time = omp_get_wtime();
-    // LoadAndAnalysisSeq("./../text_data", 100);
+    // LoadAndAnalysisSeq("./../text_data", 1000, false, false, false, true, false);
     // end_time = omp_get_wtime();
     // std::cout << "time :" << end_time -start_time << "\n";
 
     // std::cout << "Par" << "\n";
     // start_time = omp_get_wtime();
-    // LoadAndAnalysisPar("./../text_data", 100);
+    // LoadAndAnalysisPar("./../text_data", 1000);
     // end_time = omp_get_wtime();
     // std::cout << "time :" << end_time -start_time << "\n";
 
-    // std::cout << "ParV2" << "\n";
-    // start_time = omp_get_wtime();
-    LoadAndAnalysisParV2("./../text_data", 100);
-    // end_time = omp_get_wtime();
-    // std::cout << "time :" << end_time -start_time << "\n";
+    std::cout << "ParV2" << "\n";
+    start_time = omp_get_wtime();
+    LoadAndAnalysisParV2("./../text_data", 10000, false, true, false, false, false);
+    end_time = omp_get_wtime();
+    std::cout << "time :" << end_time -start_time << "\n";
+
+//     std::cout << "ParV3" << "\n";
+//     start_time = omp_get_wtime();
+//     LoadAndAnalysisParV3("./../text_data", 100);
+//     end_time = omp_get_wtime();
+//     std::cout << "time :" << end_time -start_time << "\n";
 }
