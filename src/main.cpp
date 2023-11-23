@@ -414,7 +414,8 @@ void LoadAndAnalysisParV3(std::string text_data_path, int max_doc_num=-1, bool s
 
 void Benchmark(std::vector<uint32_t> ebooks_to_load)
 {
-    // Benchmark performs only character analysis due to available hardware resources (massive Ram usage to store words as documents increase)
+    // Benchmark performs only character analysis due to available hardware resources (massive Ram usage to store word's maps as documents increase)
+    // This way it can test more documents
 
     struct benchmarks_data
     {
@@ -496,7 +497,7 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
                                              << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
             std::cout << "\r";
             start_time = omp_get_wtime();
-            LoadAndAnalysisSeq("./../text_data", ebooks_to_load[main_benchmarks_idx], false, true, true);
+            LoadAndAnalysisSeq("./../text_data", ebooks_to_load[main_benchmarks_idx], false, true);
             end_time = omp_get_wtime();
             elapsed_seq.push_back(end_time-start_time);
 
@@ -504,7 +505,7 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
                                              << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
             std::cout << "\r";
             start_time = omp_get_wtime();
-            LoadAndAnalysisPar("./../text_data", ebooks_to_load[main_benchmarks_idx], false, true, true);
+            LoadAndAnalysisPar("./../text_data", ebooks_to_load[main_benchmarks_idx], false, true);
             end_time = omp_get_wtime();
             elapsed_par.push_back(end_time-start_time);
 
@@ -512,7 +513,7 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
                                              << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
             std::cout << "\r";
             start_time = omp_get_wtime();
-            LoadAndAnalysisParV2("./../text_data", ebooks_to_load[main_benchmarks_idx], false, true, true);
+            LoadAndAnalysisParV2("./../text_data", ebooks_to_load[main_benchmarks_idx], false, true);
             end_time = omp_get_wtime();
             elapsed_parV2.push_back(end_time-start_time);
         }
@@ -529,34 +530,34 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
 int main() 
 {
 
-    // std::vector<uint32_t> ebooks_to_load = {10};
-    // std::vector<uint32_t> ebooks_to_load = {10, 50, 100, 200, 500, 1000, 2000, 5000};
-    // Benchmark(ebooks_to_load);
+    std::vector<uint32_t> ebooks_to_load = {10000};
+    // std::vector<uint32_t> ebooks_to_load = {10, 100, 200, 500, 1000, 2000, 5000};
+    Benchmark(ebooks_to_load);
 
 
 
-    double start_time=0, end_time=0;
+    // double start_time=0, end_time=0;
     // std::cout << "Seq" << "\n";
     // start_time = omp_get_wtime();
     // LoadAndAnalysisSeq("./../text_data", 100, true, true, false, false, false);
     // end_time = omp_get_wtime();
     // std::cout << "time :" << end_time -start_time << "\n";
 
-    std::cout << "Par" << "\n";
-    start_time = omp_get_wtime();
-    LoadAndAnalysisPar("./../text_data", 1000, false, true, false, false, false);
-    end_time = omp_get_wtime();
-    std::cout << "time :" << end_time -start_time << "\n";
+    // std::cout << "Par" << "\n";
+    // start_time = omp_get_wtime();
+    // LoadAndAnalysisPar("./../text_data", 1000, false, true, false, false, false);
+    // end_time = omp_get_wtime();
+    // std::cout << "time :" << end_time -start_time << "\n";
 
-    std::cout << "ParV2" << "\n";
-    start_time = omp_get_wtime();
-    LoadAndAnalysisParV2("./../text_data", 1000, false, true, false, false, false);
-    end_time = omp_get_wtime();
-    std::cout << "time :" << end_time -start_time << "\n";
+    // std::cout << "ParV2" << "\n";
+    // start_time = omp_get_wtime();
+    // LoadAndAnalysisParV2("./../text_data", 1000, false, true, false, false, false);
+    // end_time = omp_get_wtime();
+    // std::cout << "time :" << end_time -start_time << "\n";
 
-    std::cout << "ParV3" << "\n";
-    start_time = omp_get_wtime();
-    LoadAndAnalysisParV3("./../text_data", 1000, false, true, false, false, false);
-    end_time = omp_get_wtime();
-    std::cout << "time :" << end_time -start_time << "\n";
+    // std::cout << "ParV3" << "\n";
+    // start_time = omp_get_wtime();
+    // LoadAndAnalysisParV3("./../text_data", 1000, false, true, false, false, false);
+    // end_time = omp_get_wtime();
+    // std::cout << "time :" << end_time -start_time << "\n";
 }

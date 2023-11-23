@@ -26,11 +26,11 @@ def main():
     ax.set_yscale('log')
 
     # plot vertical lines
-    differences = [(y_seq / y_parV2) for y_seq, y_parV2 in zip(y_axis_seq, y_axis_parV2)]
+    differences = [(y_seq / y_par) for y_seq, y_par in zip(y_axis_seq, y_axis_par)]
 
-    for x, y_seq, y_parV2, diff in zip(x_axis, y_axis_seq, y_axis_parV2, differences):
-        ax.plot([x, x], [y_seq, y_parV2], 'r--')
-        ax.text(x + 0.1, (y_seq + y_parV2) / 2, f"{round(diff, 2)}", color='red')
+    for x, y_seq, y_par, diff in zip(x_axis, y_axis_seq, y_axis_par, differences):
+        ax.plot([x, x], [y_seq, y_par], 'r--')
+        ax.text(x + 0.1, (y_seq + y_par) / 2, f"{round(diff, 2)}", color='red')
 
     custom_legend = Line2D([0], [0], color='red', linestyle='--', linewidth=2, markersize=5)
 
