@@ -1,12 +1,15 @@
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import json
+import os
 
+ABS_PATH = os.path.abspath(__file__)
+MEDIA_PATH = f"{os.path.abspath(os.path.join(os.path.dirname(ABS_PATH), os.pardir))}/media"
 
 def main():
 
     # load benchmarks data
-    with open("./media/benchmarks.json",'r') as json_file:
+    with open(f"{MEDIA_PATH}/benchmarks.json",'r') as json_file:
         benchmarks = json.load(json_file)
 
     x_axis = [benchmark["ebook_num"] for benchmark in benchmarks]
@@ -41,7 +44,7 @@ def main():
     labels.append('Speed_up')
 
     ax.legend(handles=handles, labels=labels, loc='upper left')
-    fig.savefig("./media/benchmarks.png", dpi=600)
+    fig.savefig(f"{MEDIA_PATH}/benchmarks.png", dpi=600)
     plt.show()
 
 if __name__ == "__main__":
