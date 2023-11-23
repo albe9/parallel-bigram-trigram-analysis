@@ -276,23 +276,21 @@ void trigramCharAnalyseChunk(std::string* chunk_ptr, std::unordered_map<std::str
     }
 }
 
-void LoadAndAnalysisSeq(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false,
-                            bool bigram_char=false, bool trigram_char=false, bool bigram_word=false, bool trigram_word=false)
+void LoadPaths(std::string text_data_path, std::vector<fs::path>* doc_paths, int max_doc_num)
 {
     // Save path in a vector
-    std::vector<fs::path> doc_paths;
-
+    
     if (std::filesystem::exists(text_data_path) && std::filesystem::is_directory(text_data_path))
     {
         for (const auto& entry : std::filesystem::directory_iterator(text_data_path)) 
         {
-            if(doc_paths.size() >= max_doc_num)
+            if(doc_paths->size() >= max_doc_num)
             {
                 break;
             }
             else if(std::filesystem::is_regular_file(entry))
             {
-                doc_paths.push_back(entry.path());
+                doc_paths->push_back(entry.path());
             }
         }
     } 
@@ -300,6 +298,44 @@ void LoadAndAnalysisSeq(std::string text_data_path, int max_doc_num=-1, bool ser
     {
         std::cerr << "The specified directory does not exist or is not a directory." << std::endl;
     }
+}
+
+void LoadDoc(std::string* doc_str, fs::path* doc_path)
+{
+    doc_str->resize(fs::file_size(*doc_path));
+    doc_str->clear();
+
+    std::ifstream doc_input(*doc_path, std::ios::in);
+    if(!doc_input.is_open())
+    {
+        std::cout << *doc_path << " not opened" << std::endl;
+        // TODO handle opening error
+    }
+
+    // Reading and preprocessing doc one line at a time
+    std::string line;
+    while(std::getline(doc_input, line))
+    {
+
+        if (line.back() == '\n')
+        {
+            line.pop_back();
+        }    
+        else if (line.back() == '\r')
+        {
+            line.pop_back();
+            line.push_back(' ');
+        }
+        (*doc_str) += line;
+    }
+}
+
+void LoadAndAnalysisSeq(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false,
+                            bool bigram_char=false, bool trigram_char=false, bool bigram_word=false, bool trigram_word=false)
+{
+    // Save path in a vector
+    std::vector<fs::path> doc_paths;
+    LoadPaths(text_data_path, &doc_paths, max_doc_num);
     
     // Iter through file and load data 
 
@@ -309,38 +345,13 @@ void LoadAndAnalysisSeq(std::string text_data_path, int max_doc_num=-1, bool ser
     std::unordered_map<std::string, uint32_t> trigram_char_occurrences;
 
     
-    for(auto iter_doc_path=doc_paths.begin(); iter_doc_path != doc_paths.end(); iter_doc_path++)
+    for(auto& doc_path : doc_paths)
     {
+        // Load doc
         std::string doc_str;
-        doc_str.resize(fs::file_size(*iter_doc_path));
-        doc_str.clear();
+        LoadDoc(&doc_str, &doc_path);
 
-        std::ifstream doc_input(*iter_doc_path, std::ios::in);
-        if(!doc_input.is_open())
-        {
-            std::cout << *iter_doc_path << " not opened" << std::endl;
-            // TODO handle opening error
-        }
-
-        std::string line;
-
-        while(std::getline(doc_input, line))
-        {
-
-            if (line.back() == '\n')
-            {
-                line.pop_back();
-            }    
-            else if (line.back() == '\r')
-            {
-                line.pop_back();
-                line.push_back(' ');
-            }
-            doc_str += line;
-            
-        }
-
-        // Analyse chunk
+        // Analyse Doc
         if(bigram_word)
         bigramWordAnalyseChunk(&doc_str, &bigram_word_occurrences);
         if(trigram_word)
@@ -371,26 +382,12 @@ void LoadAndAnalysisPar(std::string text_data_path, int max_doc_num=-1, bool ser
     ssize_t total_docs_size = 0;
     // Save path in a vector
     std::vector<fs::path> doc_paths;
-
-    if (std::filesystem::exists(text_data_path) && std::filesystem::is_directory(text_data_path))
-    {
-        for (const auto& entry : std::filesystem::directory_iterator(text_data_path)) 
-        {   
-            if(doc_paths.size() >= max_doc_num)
-            {
-                break;
-            }
-            else if (std::filesystem::is_regular_file(entry))
-            {
-                doc_paths.push_back(entry.path());
-                total_docs_size += entry.file_size();
-            }
-        }
-    } 
-    else 
-    {
-        std::cerr << "The specified directory does not exist or is not a directory." << std::endl;
-    }
+    LoadPaths(text_data_path, &doc_paths, max_doc_num);
+    
+    // Sort the vector based on file sizes (to distribute them equally)
+    std::sort(doc_paths.begin(), doc_paths.end(), [](const fs::path& path1, const fs::path& path2) {
+        return fs::file_size(path1) < fs::file_size(path2);
+    });
     
     uint32_t max_threads = omp_get_max_threads();
 
@@ -408,40 +405,17 @@ void LoadAndAnalysisPar(std::string text_data_path, int max_doc_num=-1, bool ser
     std::vector<std::string> thread_docs_str(doc_paths.size());
     std::vector<bool> doc_ready(doc_paths.size(), false);
     
-    #pragma omp parallel shared(doc_paths, thread_docs_str, thread_bigram_word_occurrences, thread_trigram_word_occurrences, thread_bigram_char_occurrences, thread_trigram_char_occurrences)
+    #pragma omp parallel shared(doc_paths, thread_docs_str, doc_ready, thread_bigram_word_occurrences, thread_trigram_word_occurrences, thread_bigram_char_occurrences, thread_trigram_char_occurrences, \
+                                total_bigram_word_occurrences, total_trigram_word_occurrences, total_bigram_char_occurrences, total_trigram_char_occurrences)
     {
         #pragma omp single
         {
             // Iter through file and save data
             uint32_t doc_idx = 0;
-            for(auto iter_doc_path=doc_paths.begin(); iter_doc_path != doc_paths.end(); iter_doc_path++)
+            for(auto& doc_path : doc_paths)
             {
-                thread_docs_str[doc_idx].resize(fs::file_size(*iter_doc_path));
-
-                std::ifstream doc_input(*iter_doc_path, std::ios::in);
-                if(!doc_input.is_open())
-                {
-                    std::cout << *iter_doc_path << " not opened" << std::endl;
-                    // TODO handle opening error
-                }
-
-                std::string line;
-
-                while(std::getline(doc_input, line))
-                {
-
-                    if (line.back() == '\n')
-                    {
-                        line.pop_back();
-                    }    
-                    else if (line.back() == '\r')
-                    {
-                        line.pop_back();
-                        line.push_back(' ');
-                    }
-                    thread_docs_str[doc_idx] += line;
-                    
-                }
+                // Load Doc into thread's string
+                LoadDoc(&thread_docs_str[doc_idx], &doc_path);
                 doc_ready[doc_idx] = true;
                 doc_idx++;
             }
@@ -467,8 +441,7 @@ void LoadAndAnalysisPar(std::string text_data_path, int max_doc_num=-1, bool ser
                     // Wait until doc is ready to be processed
                 }
 
-                
-                // Analyse chunk
+                // Analyse Doc
                 if(bigram_word)
                 bigramWordAnalyseChunk(&thread_docs_str[thread_doc_idx], &thread_bigram_word_occurrences[thread_idx]);
                 if(trigram_word)
@@ -559,25 +532,7 @@ void LoadAndAnalysisParV2(std::string text_data_path, int max_doc_num=-1, bool s
 {
     // Save paths in a vector
     std::vector<fs::path> doc_paths;
-
-    if (std::filesystem::exists(text_data_path) && std::filesystem::is_directory(text_data_path))
-    {
-        for (const auto& entry : std::filesystem::directory_iterator(text_data_path)) 
-        {   
-            if(doc_paths.size() >= max_doc_num)
-            {
-                break;
-            }
-            else if (std::filesystem::is_regular_file(entry))
-            {
-                doc_paths.push_back(entry.path());
-            }
-        }
-    } 
-    else 
-    {
-        std::cerr << "The specified directory does not exist or is not a directory." << std::endl;
-    }
+    LoadPaths(text_data_path, &doc_paths, max_doc_num);
     
     // Sort the vector based on file sizes (to distribute them equally)
     std::sort(doc_paths.begin(), doc_paths.end(), [](const fs::path& path1, const fs::path& path2) {
@@ -606,44 +561,20 @@ void LoadAndAnalysisParV2(std::string text_data_path, int max_doc_num=-1, bool s
     std::unordered_map<std::string, uint32_t> total_bigram_char_occurrences;
     std::unordered_map<std::string, uint32_t> total_trigram_char_occurrences;
 
-    #pragma omp parallel shared(threads_doc_paths, thread_bigram_word_occurrences, thread_trigram_word_occurrences, thread_bigram_char_occurrences, thread_trigram_char_occurrences)
+    #pragma omp parallel shared(threads_doc_paths, thread_bigram_word_occurrences, thread_trigram_word_occurrences, thread_bigram_char_occurrences, thread_trigram_char_occurrences, \
+                                total_bigram_word_occurrences, total_trigram_word_occurrences, total_bigram_char_occurrences, total_trigram_char_occurrences)
     {
         uint32_t thread_idx = omp_get_thread_num();
 
         if(threads_doc_paths[thread_idx].size() != 0 )
         {
-            for(auto iter_doc_path=threads_doc_paths[thread_idx].begin(); iter_doc_path != threads_doc_paths[thread_idx].end(); iter_doc_path++)
+            for(auto& doc_path : threads_doc_paths[thread_idx])
             {
+                // Load Doc
                 std::string doc_str;
-                doc_str.resize(fs::file_size(*iter_doc_path));
-                doc_str.clear();
+                LoadDoc(&doc_str, &doc_path);
 
-                std::ifstream doc_input(*iter_doc_path, std::ios::in);
-                if(!doc_input.is_open())
-                {
-                    std::cout << *iter_doc_path << " not opened" << std::endl;
-                    // TODO handle opening error
-                }
-
-                std::string line;
-
-                while(std::getline(doc_input, line))
-                {
-
-                    if (line.back() == '\n')
-                    {
-                        line.pop_back();
-                    }    
-                    else if (line.back() == '\r')
-                    {
-                        line.pop_back();
-                        line.push_back(' ');
-                    }
-                    doc_str += line;
-                    
-                }
-
-                // Analyse chunk
+                // Analyse Doc
                 if(bigram_word)
                 bigramWordAnalyseChunk(&doc_str, &thread_bigram_word_occurrences[thread_idx]);
                 if(trigram_word)
@@ -731,47 +662,24 @@ void LoadAndAnalysisParV3(std::string text_data_path, int max_doc_num=-1, bool s
 {
     // Save paths in a vector
     std::vector<fs::path> doc_paths;
+    LoadPaths(text_data_path, &doc_paths, max_doc_num);
+    
+    
+    // Sort the vector based on file sizes (to distribute them equally)
+    std::sort(doc_paths.begin(), doc_paths.end(), [](const fs::path& path1, const fs::path& path2) {
+        return fs::file_size(path1) < fs::file_size(path2);
+    });
 
-    if (std::filesystem::exists(text_data_path) && std::filesystem::is_directory(text_data_path))
-    {
-        for (const auto& entry : std::filesystem::directory_iterator(text_data_path)) 
-        {   
-            if(doc_paths.size() >= max_doc_num)
-            {
-                break;
-            }
-            else if (std::filesystem::is_regular_file(entry))
-            {
-                doc_paths.push_back(entry.path());
-            }
-        }
-    } 
-    else 
-    {
-        std::cerr << "The specified directory does not exist or is not a directory." << std::endl;
-    }
     
     uint32_t max_threads = omp_get_max_threads();
 
     // Split doc_path based on max threads
-
-    uint32_t num_doc_for_thread = doc_paths.size() / max_threads;
-    uint32_t doc_remainder = doc_paths.size() % max_threads;
-    std::vector<std::vector<fs::path>> threads_doc_paths;
-    uint32_t start_doc_idx = 0;
-    for(int thread_idx=0; thread_idx<max_threads; thread_idx++)
+    std::vector<std::vector<fs::path>> threads_doc_paths(max_threads);
+    uint32_t thread_idx = 0;
+    for(auto doc_path : doc_paths)
     {
-        uint32_t end_doc_idx = start_doc_idx + num_doc_for_thread - 1;
-        if(doc_remainder > 0)
-        {
-            end_doc_idx++;
-            doc_remainder--;
-        }
-
-        std::vector<fs::path> doc_subset(doc_paths.begin() + start_doc_idx, doc_paths.begin() + end_doc_idx + 1);
-        threads_doc_paths.push_back(doc_subset);
-
-        start_doc_idx = end_doc_idx + 1;
+        threads_doc_paths[thread_idx % max_threads].push_back(doc_path);
+        thread_idx++;
     }
 
     std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>> total_bigram_word_occurrences;
@@ -785,36 +693,11 @@ void LoadAndAnalysisParV3(std::string text_data_path, int max_doc_num=-1, bool s
 
         if(threads_doc_paths[thread_idx].size() != 0 )
         {
-            for(auto iter_doc_path=threads_doc_paths[thread_idx].begin(); iter_doc_path != threads_doc_paths[thread_idx].end(); iter_doc_path++)
+            for(auto doc_path : threads_doc_paths[thread_idx])
             {
+                // Load Doc
                 std::string doc_str;
-                doc_str.resize(fs::file_size(*iter_doc_path));
-                doc_str.clear();
-
-                std::ifstream doc_input(*iter_doc_path, std::ios::in);
-                if(!doc_input.is_open())
-                {
-                    std::cout << *iter_doc_path << " not opened" << std::endl;
-                    // TODO handle opening error
-                }
-
-                std::string line;
-
-                while(std::getline(doc_input, line))
-                {
-
-                    if (line.back() == '\n')
-                    {
-                        line.pop_back();
-                    }    
-                    else if (line.back() == '\r')
-                    {
-                        line.pop_back();
-                        line.push_back(' ');
-                    }
-                    doc_str += line;
-                    
-                }
+                LoadDoc(&doc_str, &doc_path);
 
                 #pragma omp critical
                 {
@@ -973,25 +856,25 @@ int main()
     double start_time=0, end_time=0;
     // std::cout << "Seq" << "\n";
     // start_time = omp_get_wtime();
-    // LoadAndAnalysisSeq("./../text_data", 1000, false, false, false, true, false);
+    // LoadAndAnalysisSeq("./../text_data", 100, true, true, false, false, false);
     // end_time = omp_get_wtime();
     // std::cout << "time :" << end_time -start_time << "\n";
 
-    // std::cout << "Par" << "\n";
-    // start_time = omp_get_wtime();
-    // LoadAndAnalysisPar("./../text_data", 1000);
-    // end_time = omp_get_wtime();
-    // std::cout << "time :" << end_time -start_time << "\n";
-
-    std::cout << "ParV2" << "\n";
+    std::cout << "Par" << "\n";
     start_time = omp_get_wtime();
-    LoadAndAnalysisParV2("./../text_data", 10000, false, true, false, false, false);
+    LoadAndAnalysisPar("./../text_data", 1000, false, true, false, false, false);
     end_time = omp_get_wtime();
     std::cout << "time :" << end_time -start_time << "\n";
 
-//     std::cout << "ParV3" << "\n";
-//     start_time = omp_get_wtime();
-//     LoadAndAnalysisParV3("./../text_data", 100);
-//     end_time = omp_get_wtime();
-//     std::cout << "time :" << end_time -start_time << "\n";
+    std::cout << "ParV2" << "\n";
+    start_time = omp_get_wtime();
+    LoadAndAnalysisParV2("./../text_data", 1000, false, true, false, false, false);
+    end_time = omp_get_wtime();
+    std::cout << "time :" << end_time -start_time << "\n";
+
+    std::cout << "ParV3" << "\n";
+    start_time = omp_get_wtime();
+    LoadAndAnalysisParV3("./../text_data", 1000, false, true, false, false, false);
+    end_time = omp_get_wtime();
+    std::cout << "time :" << end_time -start_time << "\n";
 }
