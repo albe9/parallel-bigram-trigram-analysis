@@ -1,5 +1,7 @@
 output/*
+!benchmarks_example.json
 text_data/*
+!ebook1_example.txt
 debug_text_data/*
 build/*
 *.pdf

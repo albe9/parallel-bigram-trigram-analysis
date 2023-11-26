@@ -12,7 +12,7 @@
 namespace fs = std::filesystem;
 
 
-void LoadAndAnalysisSeq(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false,
+void LoadAndAnalysisSeq(std::string text_data_path, int32_t max_doc_num=-1, bool serialize_to_json=false,
                             bool bigram_char=false, bool trigram_char=false, bool bigram_word=false, bool trigram_word=false)
 {
     // Save path in a vector
@@ -58,7 +58,7 @@ void LoadAndAnalysisSeq(std::string text_data_path, int max_doc_num=-1, bool ser
     }
 }
 
-void LoadAndAnalysisPar(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false,
+void LoadAndAnalysisPar(std::string text_data_path, int32_t max_doc_num=-1, bool serialize_to_json=false,
                             bool bigram_char=false, bool trigram_char=false, bool bigram_word=false, bool trigram_word=false)
 {
     ssize_t total_docs_size = 0;
@@ -141,7 +141,7 @@ void LoadAndAnalysisPar(std::string text_data_path, int max_doc_num=-1, bool ser
         // Merge partial unordered_maps
         // Assume at least 4 thread TODO: check
 
-        for(int partial_map_idx=0; partial_map_idx < max_threads; partial_map_idx++)
+        for(uint32_t partial_map_idx=0; partial_map_idx < max_threads; partial_map_idx++)
         {
             if(thread_idx == 0 && bigram_word)
             {
@@ -209,7 +209,7 @@ void LoadAndAnalysisPar(std::string text_data_path, int max_doc_num=-1, bool ser
     
 }
 
-void LoadAndAnalysisParV2(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false,
+void LoadAndAnalysisParV2(std::string text_data_path, int32_t max_doc_num=-1, bool serialize_to_json=false,
                             bool bigram_char=false, bool trigram_char=false, bool bigram_word=false, bool trigram_word=false)
 {
     // Save paths in a vector
@@ -273,7 +273,7 @@ void LoadAndAnalysisParV2(std::string text_data_path, int max_doc_num=-1, bool s
         // Merge partial unordered_maps
         // Assume at least 4 thread TODO: check
 
-        for(int partial_map_idx=0; partial_map_idx < max_threads; partial_map_idx++)
+        for(uint32_t partial_map_idx=0; partial_map_idx < max_threads; partial_map_idx++)
         {
             if(thread_idx == 0 && bigram_word)
             {
@@ -339,7 +339,7 @@ void LoadAndAnalysisParV2(std::string text_data_path, int max_doc_num=-1, bool s
 
 }
 
-void LoadAndAnalysisParV3(std::string text_data_path, int max_doc_num=-1, bool serialize_to_json=false,
+void LoadAndAnalysisParV3(std::string text_data_path, int32_t max_doc_num=-1, bool serialize_to_json=false,
                             bool bigram_char=false, bool trigram_char=false, bool bigram_word=false, bool trigram_word=false)
 {
     // Save paths in a vector
@@ -412,25 +412,25 @@ void LoadAndAnalysisParV3(std::string text_data_path, int max_doc_num=-1, bool s
 
 }
 
-void Benchmark(std::vector<uint32_t> ebooks_to_load)
+void Benchmark(std::vector<uint32_t> ebooks_to_load, std::string json_output_path)
 {
     // Benchmark performs only character analysis due to available hardware resources (massive Ram usage to store word's maps as documents increase)
     // This way it can test more documents
 
     struct benchmarks_data
     {
-        std::vector<int> ebook_num;
+        std::vector<uint32_t> ebook_num;
         std::vector<std::vector<double>> elapsed_seq, elapsed_par, elapsed_parV2;
 
 
         void ToJsonFile(std::string json_path)
         {
-            int total_benchmark = ebook_num.size();
+            size_t total_benchmark = ebook_num.size();
             std::ofstream json_file(json_path, std::ios::out);
 
             json_file << "[\n";
 
-            for(int benchmark_idx=0; benchmark_idx<total_benchmark; benchmark_idx++)
+            for(uint32_t benchmark_idx=0; benchmark_idx<total_benchmark; benchmark_idx++)
             {
                 json_file << "\t{\n";
                 json_file << "\t\"ebook_num\" : " << ebook_num[benchmark_idx] <<",\n";
@@ -484,14 +484,14 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
     uint32_t iter_for_reliability = 5;
     uint32_t main_benchmarks_number = ebooks_to_load.size();
 
-    for(int main_benchmarks_idx=0; main_benchmarks_idx< main_benchmarks_number; main_benchmarks_idx++)
+    for(uint32_t main_benchmarks_idx=0; main_benchmarks_idx< main_benchmarks_number; main_benchmarks_idx++)
     {
         std::vector<double> elapsed_seq, elapsed_par, elapsed_parV2;
         double start_time=0, end_time=0;
 
         benchmarks.ebook_num.push_back(ebooks_to_load[main_benchmarks_idx]);
 
-        for(int reliability_idx=0;reliability_idx<iter_for_reliability;reliability_idx++)
+        for(uint32_t reliability_idx=0;reliability_idx<iter_for_reliability;reliability_idx++)
         {
             std::cout << "Seq_Analysis    : [ " << reliability_idx + 1 << " / " << iter_for_reliability << " ] of [ " 
                                              << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
@@ -523,7 +523,7 @@ void Benchmark(std::vector<uint32_t> ebooks_to_load)
         benchmarks.elapsed_parV2.push_back(elapsed_parV2);
     }
     
-    benchmarks.ToJsonFile("./../output/benchmarks.json");
+    benchmarks.ToJsonFile(json_output_path);
 
 }
 
@@ -532,7 +532,7 @@ int main()
 
     std::vector<uint32_t> ebooks_to_load = {10000};
     // std::vector<uint32_t> ebooks_to_load = {10, 100, 200, 500, 1000, 2000, 5000};
-    Benchmark(ebooks_to_load);
+    Benchmark(ebooks_to_load, "./../output/benchmarks.json");
 
 
 
