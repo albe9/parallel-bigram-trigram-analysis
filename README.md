@@ -22,7 +22,7 @@
         <li>A primitive to perform benchmarks between versions (results exported to json in the output folder)</li>
       </ul>
     </li>
-    <li>python_scripts/downloader.py python script that allows downloading some ebooks from www.gutenberg.org (uses multithreading to be able to download a large number of documents in a short time)</li>
+    <li>python_scripts/downloader.py python script that allows downloading some ebooks from www.gutenberg.org in the folder text_data. it uses multithreading to be able to download a large number of documents in a short time</li>
     <li>python_scripts/graph_tracer.py python script that allows plotting graphs related to benchmarks results.</li>
   </ul>
 </p>
