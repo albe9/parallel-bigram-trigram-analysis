@@ -5,7 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
-
+#include <regex>
 
 namespace fs = std::filesystem;
 
@@ -63,9 +63,8 @@ void analysisToJsonFile(std::string json_path, std::unordered_map<std::string, s
             if(std::next(iter2) != iter->second.end())
             {
                 json_file << ",";
+                json_file << "\n";
             }
-            json_file << "\n";
-            
         }
         json_file << "\n\t}";
         if(std::next(iter) != trigram_occurrences->end())
@@ -99,28 +98,17 @@ void analysisToJsonFile(std::string json_path, std::unordered_map<std::string, u
 
 }
 
-inline std::string filterString(std::string str_to_filter, bool* need_to_break = nullptr)
+void filterDoc(std::string* doc_str, std::string* doc_filtered)
 {
-    std::string str_filtered = "";
+    std::regex base_filter("[^a-zA-Z \n.]");
+    std::regex advanced_filter("(\n|\r|\\. \\. \\.)");
+    std::regex period_filter("\\. ");
 
-    for(int char_idx=0; char_idx<str_to_filter.length();char_idx++)
-    {
-        if( 97 <= int(str_to_filter[char_idx]) && int(str_to_filter[char_idx]) <= 122)
-        {
-            str_filtered += str_to_filter[char_idx];
-        }
-        else if( 65 <= int(str_to_filter[char_idx]) && int(str_to_filter[char_idx]) <= 90)
-        {
-            str_filtered += std::tolower(str_to_filter[char_idx]);
-        }
-        if(need_to_break != nullptr && char_idx == str_to_filter.length() - 1 && int(str_to_filter[char_idx]) == 46)
-        {
-            // notify to break analysis count if period is found
-            *need_to_break = true;
-        }
-    }
-    
-    return str_filtered;
+    *doc_filtered = std::regex_replace(*doc_str, base_filter, "");
+    *doc_filtered = std::regex_replace(*doc_filtered, advanced_filter, " ");
+    *doc_filtered = std::regex_replace(*doc_filtered, period_filter, " - ");
+
+    std::transform(doc_filtered->begin(), doc_filtered->end(), doc_filtered->begin(), ::tolower);
 
 }
 
@@ -129,35 +117,23 @@ void bigramWordAnalyseChunk(std::string* chunk_ptr, std::unordered_map<std::stri
     std::stringstream ss(*chunk_ptr);
     
     std::string current_word="", first_word="";
+
     while (std::getline(ss, current_word, ' '))
     {
-        bool need_to_break = false;
-        std::string word_filtered = filterString(current_word, &need_to_break);
-
-        if(word_filtered != "")
+        if(current_word != "")
         {
-            if(first_word == "")
+            if(current_word == "-")
             {
-                if(need_to_break)
-                {
-                    first_word = "";
-                }
-                else
-                {
-                    first_word = word_filtered;
-                }
+                first_word = "";
+            }
+            else if(first_word == "")
+            {
+                first_word = current_word;
             }
             else
             {
-                (*bigram_occurrences)[first_word][word_filtered]++;
-                if(need_to_break)
-                {
-                    first_word = "";
-                }
-                else
-                {
-                    first_word = word_filtered;
-                }
+                (*bigram_occurrences)[first_word][current_word]++;
+                first_word = current_word;
             }
         }
     }
@@ -170,47 +146,26 @@ void trigramWordAnalyseChunk(std::string* chunk_ptr, std::unordered_map<std::str
     std::string current_word="", first_word="", second_word="";
     while (std::getline(ss, current_word, ' '))
     {
-        bool need_to_break = false;
-        std::string word_filtered = filterString(current_word, &need_to_break);
-
-        if(word_filtered != "")
+        if(current_word != "")
         {
-            if(first_word == "")
+            if(current_word == "-")
             {
-                if(need_to_break)
-                {
-                    first_word = "";
-                }
-                else
-                {
-                    first_word = word_filtered;
-                }
+                first_word = "";
+                second_word = "";
+            }
+            else if(first_word == "")
+            {
+                first_word = current_word;
             }
             else if(second_word == "")
             {
-                if(need_to_break)
-                {
-                    first_word = "";
-                    second_word = "";
-                }
-                else
-                {
-                    second_word = word_filtered;
-                }
+                second_word = current_word;
             }
             else
             {
-                (*trigram_occurrences)[first_word][second_word][word_filtered]++;
-                if(need_to_break)
-                {
-                    first_word = "";
-                    second_word = "";
-                }
-                else
-                {
-                    first_word = second_word;
-                    second_word = word_filtered;
-                }
+                (*trigram_occurrences)[first_word][second_word][current_word]++;
+                first_word = second_word;
+                second_word = current_word;
             }
         }
     }
@@ -223,20 +178,18 @@ void bigramCharAnalyseChunk(std::string* chunk_ptr, std::unordered_map<std::stri
     std::string current_word="";
     while (std::getline(ss, current_word, ' '))
     {
-        std::string word_filtered = filterString(current_word);
-
-        if(word_filtered != "")
+        if(current_word != "" && current_word != "-")
         {
             std::string bigram;
-            for(int char_idx=0; char_idx<word_filtered.length(); char_idx++)
+            for(int char_idx=0; char_idx<current_word.length(); char_idx++)
             {
                 if(char_idx == 0)
                 {
-                    bigram = word_filtered[char_idx];
+                    bigram = current_word[char_idx];
                 }
                 else
                 {
-                    bigram += word_filtered[char_idx];
+                    bigram += current_word[char_idx];
                     (*bigram_occurrences)[bigram]++;
                     bigram = bigram[1];
                 }
@@ -252,23 +205,21 @@ void trigramCharAnalyseChunk(std::string* chunk_ptr, std::unordered_map<std::str
     std::string current_word="";
     while (std::getline(ss, current_word, ' '))
     {
-        std::string word_filtered = filterString(current_word);
-
-        if(word_filtered != "")
+        if(current_word != "" && current_word != "-")
         {
             std::string trigram;
-            for(int char_idx=0; char_idx<word_filtered.length(); char_idx++)
+            for(int char_idx=0; char_idx<current_word.length(); char_idx++)
             {
                 if(char_idx == 0)
                 {
-                    trigram = word_filtered[char_idx];
+                    trigram = current_word[char_idx];
                 }
                 else if(char_idx == 1){
-                    trigram += word_filtered[char_idx];
+                    trigram += current_word[char_idx];
                 }
                 else
                 {
-                    trigram += word_filtered[char_idx];
+                    trigram += current_word[char_idx];
                     (*trigram_occurrences)[trigram]++;
                     trigram = trigram.substr(1,3);
                 }
@@ -318,15 +269,16 @@ void LoadDoc(std::string* doc_str, fs::path* doc_path)
     while(std::getline(doc_input, line))
     {
 
-        if (line.back() == '\n')
-        {
-            line.pop_back();
-        }    
-        else if (line.back() == '\r')
-        {
-            line.pop_back();
-            line.push_back(' ');
-        }
+        // if (line.back() == '\n')
+        // {
+        //     line.pop_back();
+        // }    
+        // else if (line.back() == '\r')
+        // {
+        //     line.pop_back();
+        //     line.push_back(' ');
+        // }
+        line += "\n";
         (*doc_str) += line;
     }
 }
