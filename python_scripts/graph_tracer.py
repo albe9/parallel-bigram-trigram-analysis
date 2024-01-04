@@ -115,11 +115,11 @@ def main():
     # #trace graph
     # trace_time_ebooks_graph(benchmarks_ebooks_data, True)
 
-    # # load benchmarks_threads data
-    # with open(f"{MEDIA_PATH_CPP}/benchmarks_threads.json",'r') as json_file:
-    #     benchmarks_threads_data = json.load(json_file)
-    # #trace graph
-    # trace_time_threads_graph(benchmarks_threads_data, True)
+    # load benchmarks_threads data
+    with open(f"{MEDIA_PATH_CPP}/benchmarks_threads.json",'r') as json_file:
+        benchmarks_threads_data = json.load(json_file)
+    #trace graph
+    trace_time_threads_graph(benchmarks_threads_data, True)
 
 
     # # Python graphs
@@ -129,11 +129,11 @@ def main():
     # #trace graph
     # trace_time_ebooks_graph(benchmarks_ebooks_data, False)
 
-    # load benchmarks_process data
-    with open(f"{MEDIA_PATH_PYTHON}/benchmarks_process.json",'r') as json_file:
-        benchmarks_process_data = json.load(json_file)
-    #trace graph
-    trace_time_threads_graph(benchmarks_process_data, False)
+    # # load benchmarks_process data
+    # with open(f"{MEDIA_PATH_PYTHON}/benchmarks_process.json",'r') as json_file:
+    #     benchmarks_process_data = json.load(json_file)
+    # #trace graph
+    # trace_time_threads_graph(benchmarks_process_data, False)
 
 if __name__ == "__main__":
     main()
