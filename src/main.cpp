@@ -435,7 +435,7 @@ void LoadAndAnalysisParV3(std::string text_data_path, int32_t max_doc_num=-1, bo
 
 }
 
-void Benchmark(std::vector<std::pair<uint32_t, uint32_t>> benchmark_config, std::string json_output_path)
+void Benchmark(benchmark_config config)
 {
     /*
         benchmark_config : first number of ebook, second number of thread
@@ -444,110 +444,54 @@ void Benchmark(std::vector<std::pair<uint32_t, uint32_t>> benchmark_config, std:
     // Benchmark performs only character analysis due to available hardware resources (massive Ram usage to store word's maps as documents increase)
     // This way it can test more documents
 
-    struct benchmarks_data
-    {
-        std::vector<uint32_t> ebook_num;
-        std::vector<uint32_t> threads_num;
-        std::vector<std::vector<double>> elapsed_seq, elapsed_par, elapsed_parV2;
-
-
-        void ToJsonFile(std::string json_path)
-        {
-            size_t total_benchmark = ebook_num.size();
-            std::ofstream json_file(json_path, std::ios::out);
-
-            json_file << "[\n";
-
-            for(uint32_t benchmark_idx=0; benchmark_idx<total_benchmark; benchmark_idx++)
-            {
-                json_file << "\t{\n";
-                json_file << "\t\t\"ebook_num\" : " << ebook_num[benchmark_idx] <<",\n";
-                json_file << "\t\t\"threads_num\" : " << threads_num[benchmark_idx] <<",\n";
-                json_file << "\t\t\"seq_timings\"    : [ ";
-                for(auto time_measure : elapsed_seq[benchmark_idx])
-                {
-                    json_file << time_measure;
-                    if(time_measure != elapsed_seq[benchmark_idx][elapsed_seq[benchmark_idx].size() - 1])
-                    {
-                        json_file << " ,";
-                    }
-                     
-                }
-                json_file << " ],\n";
-
-                json_file << "\t\t\"par_timings\"    : [ ";
-                for(auto time_measure : elapsed_par[benchmark_idx])
-                {
-                    json_file << time_measure;
-                    if(time_measure != elapsed_par[benchmark_idx][elapsed_par[benchmark_idx].size() - 1])
-                    {
-                        json_file << " ,";
-                    }
-                }
-                json_file << " ],\n";
-
-                json_file << "\t\t\"par_timings_V2\" : [ ";
-                for(auto time_measure : elapsed_parV2[benchmark_idx])
-                {
-                    json_file << time_measure;
-                    if(time_measure != elapsed_parV2[benchmark_idx][elapsed_parV2[benchmark_idx].size() - 1])
-                    {
-                        json_file << " ,";
-                    }
-                }
-                json_file << " ]\n";
-                json_file << "\t}";
-                if(benchmark_idx != total_benchmark-1)
-                {
-                    json_file << ",";
-                }
-                json_file << "\n";
-            }
-
-            json_file << "]";
-
-        }
-    };
     
     benchmarks_data benchmarks;
-    uint32_t iter_for_reliability = 5;
-    uint32_t main_benchmarks_number = benchmark_config.size();
+    uint32_t main_benchmarks_number = config.ebooks_num.size();
 
     for(uint32_t main_benchmarks_idx=0; main_benchmarks_idx< main_benchmarks_number; main_benchmarks_idx++)
     {
         std::vector<double> elapsed_seq, elapsed_par, elapsed_parV2;
         double start_time=0, end_time=0;
 
-        benchmarks.ebook_num.push_back(benchmark_config[main_benchmarks_idx].first);
-        benchmarks.threads_num.push_back(benchmark_config[main_benchmarks_idx].second);
+        benchmarks.ebook_num.push_back(config.ebooks_num[main_benchmarks_idx]);
+        benchmarks.threads_num.push_back(config.threads_num[main_benchmarks_idx]);
 
-        omp_set_num_threads(benchmark_config[main_benchmarks_idx].second);
+        omp_set_num_threads(config.threads_num[main_benchmarks_idx]);
 
-        for(uint32_t reliability_idx=0;reliability_idx<iter_for_reliability;reliability_idx++)
+        for(uint32_t reliability_idx=0;reliability_idx<config.iter_for_reliability;reliability_idx++)
         {
-            std::cout << "Seq_Analysis    : [ " << reliability_idx + 1 << " / " << iter_for_reliability << " ] of [ " 
+            if(config.seq_analisys[main_benchmarks_idx])
+            {
+                std::cout << "Seq_Analysis    : [ " << reliability_idx + 1 << " / " << config.iter_for_reliability << " ] of [ " 
                                              << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
-            std::cout << "\r";
-            start_time = omp_get_wtime();
-            LoadAndAnalysisSeq("./../text_data", benchmark_config[main_benchmarks_idx].first, false, true);
-            end_time = omp_get_wtime();
-            elapsed_seq.push_back(end_time-start_time);
+                std::cout << "\r";
+                start_time = omp_get_wtime();
+                LoadAndAnalysisSeq("./../text_data", config.ebooks_num[main_benchmarks_idx], false, true);
+                end_time = omp_get_wtime();
+                elapsed_seq.push_back(end_time-start_time);
+            }
+            
+            if(config.par_analysis[main_benchmarks_idx])
+            {
+                std::cout << "Par_Analysis    : [ " << reliability_idx + 1 << " / " << config.iter_for_reliability << " ] of [ "
+                                                << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
+                std::cout << "\r";
+                start_time = omp_get_wtime();
+                LoadAndAnalysisPar("./../text_data", config.ebooks_num[main_benchmarks_idx], false, true);
+                end_time = omp_get_wtime();
+                elapsed_par.push_back(end_time-start_time);
+            }
 
-            std::cout << "Par_Analysis    : [ " << reliability_idx + 1 << " / " << iter_for_reliability << " ] of [ "
-                                             << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
-            std::cout << "\r";
-            start_time = omp_get_wtime();
-            LoadAndAnalysisPar("./../text_data", benchmark_config[main_benchmarks_idx].first, false, true);
-            end_time = omp_get_wtime();
-            elapsed_par.push_back(end_time-start_time);
-
-            std::cout << "Par_Analysis_V2 : [ " << reliability_idx + 1 << " / " << iter_for_reliability << " ] of [ "
-                                             << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
-            std::cout << "\r";
-            start_time = omp_get_wtime();
-            LoadAndAnalysisParV2("./../text_data", benchmark_config[main_benchmarks_idx].first, false, true);
-            end_time = omp_get_wtime();
-            elapsed_parV2.push_back(end_time-start_time);
+            if(config.par_analysis_V2[main_benchmarks_idx])
+            {
+                std::cout << "Par_Analysis_V2 : [ " << reliability_idx + 1 << " / " << config.iter_for_reliability << " ] of [ "
+                                                << main_benchmarks_idx + 1 << " / " << main_benchmarks_number << " ]" << std::flush;
+                std::cout << "\r";
+                start_time = omp_get_wtime();
+                LoadAndAnalysisParV2("./../text_data", config.ebooks_num[main_benchmarks_idx], false, true);
+                end_time = omp_get_wtime();
+                elapsed_parV2.push_back(end_time-start_time);
+            }
         }
         
         benchmarks.elapsed_seq.push_back(elapsed_seq);
@@ -555,39 +499,47 @@ void Benchmark(std::vector<std::pair<uint32_t, uint32_t>> benchmark_config, std:
         benchmarks.elapsed_parV2.push_back(elapsed_parV2);
     }
     
-    benchmarks.ToJsonFile(json_output_path);
+    benchmarks.ToJsonFile(config.json_output_path);
 
 }
 
 int main() 
 {
 
-    // std::vector<std::pair<uint32_t, uint32_t>> benchmark_config = {
-    //                                                                std::pair(500,1),
-    //                                                                std::pair(500,2),
-    //                                                                std::pair(500,3),
-    //                                                                std::pair(500,4),
-    //                                                                std::pair(500,5),
-    //                                                                std::pair(500,6),
-    //                                                                std::pair(500,7),
-    //                                                                std::pair(500,8)
-    //                                                               };
-    // std::vector<std::pair<uint32_t, uint32_t>> benchmark_config = {
-    //                                                                std::pair(10,8),
-    //                                                                std::pair(100,8),
-    //                                                                std::pair(200,8),
-    //                                                                std::pair(500,8),
-    //                                                                std::pair(1000,8),
-    //                                                                std::pair(2000,8),
-    //                                                                std::pair(5000,8)
-    //                                                               };
-    // std::vector<std::pair<uint32_t, uint32_t>> benchmark_config = {
-    //                                                                   std::pair(10000,8)
-    //                                                               };
-    // Benchmark(benchmark_config, "./../output/cpp_version/benchmarks.json");
+    benchmark_config threads_config = {
+        "./../output/cpp_version/benchmarks_threads.json",
+        5,
+        {500, 500, 500, 500, 500, 500, 500, 500, 500, 500},
+        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+        {true, false, false, false, false, false, false, false, false, false},
+        {true, true, true, true, true, true, true, true, true, true},
+        {true, true, true, true, true, true, true, true, true, true}
+    };
+
+    benchmark_config ebooks_config = {
+        "./../output/cpp_version/benchmarks_ebooks.json",
+        5,
+        {10, 100, 200, 500, 1000},
+        {4, 4, 4, 4, 4},
+        {true, true, true, true, true},
+        {true, true, true, true, true},
+        {true, true, true, true, true}
+    };
+
+    benchmark_config test_config = {
+        "./../output/cpp_version/benchmarks_test.json",
+        5,
+        {1000},
+        {4},
+        {true},
+        {true},
+        {true}
+    };
+
+    Benchmark(threads_config);
 
 
-    double start_time=0, end_time=0;
+    // double start_time=0, end_time=0;
     // std::cout << "Seq" << "\n";
     // start_time = omp_get_wtime();
     // LoadAndAnalysisSeq("./../debug_text_data", 1, true, true, true, true, true);
@@ -600,11 +552,11 @@ int main()
     // end_time = omp_get_wtime();
     // std::cout << "time :" << end_time -start_time << "\n";
 
-    std::cout << "ParV2" << "\n";
-    start_time = omp_get_wtime();
-    LoadAndAnalysisParV2("./../debug_text_data", 1, true, true, true, true, true);
-    end_time = omp_get_wtime();
-    std::cout << "time :" << end_time -start_time << "\n";
+    // std::cout << "ParV2" << "\n";
+    // start_time = omp_get_wtime();
+    // LoadAndAnalysisParV2("./../debug_text_data", 1, true, true, true, true, true);
+    // end_time = omp_get_wtime();
+    // std::cout << "time :" << end_time -start_time << "\n";
 
     // std::cout << "ParV3" << "\n";
     // start_time = omp_get_wtime();

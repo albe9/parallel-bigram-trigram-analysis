@@ -9,7 +9,81 @@
 
 namespace fs = std::filesystem;
 
+typedef struct
+{
+    std::string json_output_path;
+    uint32_t iter_for_reliability;
+    std::vector<uint32_t> ebooks_num;
+    std::vector<uint32_t> threads_num;
+    std::vector<bool> seq_analisys;
+    std::vector<bool> par_analysis; 
+    std::vector<bool> par_analysis_V2;
+}benchmark_config;
 
+typedef struct
+{
+    std::vector<uint32_t> ebook_num;
+    std::vector<uint32_t> threads_num;
+    std::vector<std::vector<double>> elapsed_seq, elapsed_par, elapsed_parV2;
+
+
+    void ToJsonFile(std::string json_path)
+    {
+        size_t total_benchmark = ebook_num.size();
+        std::ofstream json_file(json_path, std::ios::out);
+
+        json_file << "[\n";
+
+        for(uint32_t benchmark_idx=0; benchmark_idx<total_benchmark; benchmark_idx++)
+        {
+            json_file << "\t{\n";
+            json_file << "\t\t\"ebook_num\" : " << ebook_num[benchmark_idx] <<",\n";
+            json_file << "\t\t\"threads_num\" : " << threads_num[benchmark_idx] <<",\n";
+            json_file << "\t\t\"seq_timings\"    : [ ";
+            for(auto time_measure : elapsed_seq[benchmark_idx])
+            {
+                json_file << time_measure;
+                if(time_measure != elapsed_seq[benchmark_idx][elapsed_seq[benchmark_idx].size() - 1])
+                {
+                    json_file << " ,";
+                }
+                    
+            }
+            json_file << " ],\n";
+
+            json_file << "\t\t\"par_timings\"    : [ ";
+            for(auto time_measure : elapsed_par[benchmark_idx])
+            {
+                json_file << time_measure;
+                if(time_measure != elapsed_par[benchmark_idx][elapsed_par[benchmark_idx].size() - 1])
+                {
+                    json_file << " ,";
+                }
+            }
+            json_file << " ],\n";
+
+            json_file << "\t\t\"par_timings_V2\" : [ ";
+            for(auto time_measure : elapsed_parV2[benchmark_idx])
+            {
+                json_file << time_measure;
+                if(time_measure != elapsed_parV2[benchmark_idx][elapsed_parV2[benchmark_idx].size() - 1])
+                {
+                    json_file << " ,";
+                }
+            }
+            json_file << " ]\n";
+            json_file << "\t}";
+            if(benchmark_idx != total_benchmark-1)
+            {
+                json_file << ",";
+            }
+            json_file << "\n";
+        }
+
+        json_file << "]";
+
+    }
+}benchmarks_data;
 
 // Bigram word to json
 void analysisToJsonFile(std::string json_path, std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>> *bigram_occurrences){
