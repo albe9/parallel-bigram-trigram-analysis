@@ -7,3 +7,4 @@ build/*
 *.pdf
 .vscode
 vtune_analysis/*
+__pycache__
